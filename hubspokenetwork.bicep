@@ -1,10 +1,29 @@
 param location string = 'westus2'
+// Components
+// Virtual Networks        - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/virtualnetworks?pivots=deployment-language-bicep
+// Peerings                - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/virtualnetworks/virtualnetworkpeerings?pivots=deployment-language-bicep
+// Network Security Groups - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/networksecuritygroups?pivots=deployment-language-bicep
+// Log Analytics Workspace - https://learn.microsoft.com/en-us/azure/templates/microsoft.operationalinsights/workspaces?pivots=deployment-language-bicep
+// Diagnostic Settings     - https://learn.microsoft.com/en-us/azure/templates/microsoft.insights/diagnosticsettings?pivots=deployment-language-bicep
+// Azure Monitor
+// Bastion Service
+// Firewall
+// VPN Gateway
+
 // build the hub network
 
 // Resource reference links
 
-// Microsoft.Network/virtualNetworks
-//  https://learn.microsoft.com/en-us/azure/templates/microsoft.network/virtualnetworks?pivots=deployment-language-bicep
+// Network Security Group
+resource nsgSpokes 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
+  name: 'nsg-spokes-default'
+  location: location
+  properties: {
+    
+  }
+}
+
+// Virtual Network - Hub
 resource hubnetwork 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
   name: 'vnet-hub'
   location: location
@@ -16,8 +35,7 @@ resource hubnetwork 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
     }
     subnets: [
       {
-        id: 'subnet-bastion'
-        name: 'subnet-bastion'
+        name: 'AzureBastionSubnet'
         properties: {
           addressPrefix: '10.10.1.1/27'
         }
@@ -40,8 +58,8 @@ resource hubnetwork 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
   }
 }
 
-// spoke 1
-resource spokenetwork1 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
+// Virtual Network - Spoke 1
+resource spokenetwork1 'Microsoft.Network/virtualNetworks@2022-07-01' = {
   name: 'vnet-spoke1'
   location: location
   dependsOn: [
@@ -58,15 +76,18 @@ resource spokenetwork1 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = 
         id: 'subnet-spoke1-default'
         name: 'subnet-spoke1-default'
         properties: {
-          addressPrefix: '10.10.2.1/27'
+          addressPrefix: '10.10.2.0/27'
+          networkSecurityGroup: {
+            id: nsgSpokes.id
+          }
         }
       }
     ]
   }
 }
 
-// spoke 2
-resource spokenetwork2 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
+// Virtual Network - Spoke 2
+resource spokenetwork2 'Microsoft.Network/virtualNetworks@2022-07-01' = {
   name: 'vnet-spoke2'
   location: location
   properties: {
@@ -80,10 +101,14 @@ resource spokenetwork2 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = 
         id: 'subnet-spoke2-default'
         name: 'subnet-spoke2-default'
         properties: {
-          addressPrefix: '10.10.3.1/27'
+          addressPrefix: '10.10.3.0/27'
+          networkSecurityGroup: {
+            id: nsgSpokes.id
+          }
         }
       }
     ]
+    
   }
 }
 
@@ -144,14 +169,5 @@ resource peerToSpoke2 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@
     remoteVirtualNetwork: {
       id: spokenetwork2.id
     }
-  }
-}
-
-// NSG
-resource nsgSpokes 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
-  name: 'nsg-spokes-default'
-  location: location
-  properties: {
-    
   }
 }
