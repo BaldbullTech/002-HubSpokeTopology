@@ -6,13 +6,11 @@ param location string = 'westus2'
 // Log Analytics Workspace - https://learn.microsoft.com/en-us/azure/templates/microsoft.operationalinsights/workspaces?pivots=deployment-language-bicep
 // Diagnostic Settings     - https://learn.microsoft.com/en-us/azure/templates/microsoft.insights/diagnosticsettings?pivots=deployment-language-bicep
 // Azure Monitor
-// Bastion Service
+// Public IP (Bastion)     - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/publicipaddresses?pivots=deployment-language-bicep
+// Bastion Service         - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/bastionhosts?pivots=deployment-language-bicep
 // Firewall
 // VPN Gateway
 
-// build the hub network
-
-// Resource reference links
 
 // Network Security Group
 resource nsgSpokes 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
@@ -21,6 +19,185 @@ resource nsgSpokes 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
   properties: {
     
   }
+}
+// Network Security Group - Bastion
+// Reference: https://learn.microsoft.com/en-us/azure/bastion/bastion-nsg
+resource nsgBastion 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
+  name: 'nsg-bastion'
+  location: location
+  properties: {
+    securityRules: [
+      // build Inbound rules first per reference link above
+      {
+        name: 'AllowHttpsInbound'
+        properties: {
+          description: 'Allows users in via HTTPS 443'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: 'Internet'
+          destinationAddressPrefix: '*'
+          access: 'Allow'
+          priority: 100
+          direction: 'Inbound'
+        }
+      }
+      {
+        name: 'AllowGatewayManagerInbound'
+        properties: {
+          description: 'Service Requirement for the Gateway Manager'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: 'GatewayManager'
+          destinationAddressPrefix: '*'
+          access: 'Allow'
+          priority: 110
+          direction: 'Inbound'
+        }
+      }
+      {
+        name: 'AllowLoadBalancerInbound'
+        properties: {
+          description: 'Service Requirement for Load Balancer Health Probes'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: 'AzureLoadBalancer'
+          destinationAddressPrefix: '*'
+          access: 'Allow'
+          priority: 120
+          direction: 'Inbound'
+        }
+      }
+      {
+        name: 'AllowBastionHostToHostInbound'
+        properties: {
+          description: 'Service Requirement for Host to Host communication'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRanges: [
+            '8080'
+            '5701'
+          ]
+          sourceAddressPrefix: 'VirtualNetwork'
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 130
+          direction: 'Inbound'
+        }
+      }
+      {
+        name: 'DenyAllInbound'
+        properties: {
+          description: 'Deny anything else inbound'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '*'
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: '*'
+          access: 'Deny'
+          priority: 1000
+          direction: 'Inbound'
+        }
+      }
+      // Build Outbound rules per the link above
+      {
+        name: 'AllowSSHtoVNETOutbound'
+        properties: {
+          description: 'Allow SSH out to the virtual network'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          sourceAddressPrefix: '*'
+          destinationPortRange: '22'
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 100
+          direction: 'Outbound'
+        }
+      }
+      {
+        name: 'AllowRdpToVnetOutbound'
+        properties: {
+          description: 'Allow RDP out to the virtual network'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          sourceAddressPrefix: '*'
+          destinationPortRange: '3389'
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 110
+          direction: 'Outbound'
+        }
+      }
+      {
+        name: 'AllowAzureCloudOutbound'
+        properties: {
+          description: 'Service Requirement for control plane'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          sourceAddressPrefix: '*'
+          destinationPortRange: '443'
+          destinationAddressPrefix: 'AzureCloud'
+          access: 'Allow'
+          priority: 120
+          direction: 'Outbound'
+        }
+      }
+      {
+        name: 'AllowBastionHostToHostOutbound'
+        properties: {
+          description: 'Service Requirement allowing host to host communication'
+          protocol: '*'
+          sourcePortRange: '*'
+          sourceAddressPrefix: 'VirtualNetwork'
+          destinationPortRanges: [
+            '8080'
+            '5701'
+          ]
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 130
+          direction: 'Outbound'
+        }
+      }
+      {
+        name: 'AllowBastionCertValidationOutbound'
+        properties: {
+          description: 'Service Requirement allowing session and certificate validation'
+          protocol: '*'
+          sourcePortRange: '*'
+          sourceAddressPrefix: '*'
+          destinationPortRange: '80'
+          destinationAddressPrefix: 'Internet'
+          access: 'Allow'
+          priority: 140
+          direction: 'Outbound'
+        }
+      }
+      {
+        name: 'DenyAllOutbound'
+        properties: {
+          description: 'Deny anything else outbound'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '*'
+          sourceAddressPrefix: '*'
+          destinationAddressPrefix: '*'
+          access: 'Deny'
+          priority: 1000
+          direction: 'Outbound'
+        }
+      }
+    ]
+  }
+}
+
+// Log Analytics Workspace
+resource logCentralLogging 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+  name: 'law-CentralLogging'
+  location: location
+
 }
 
 // Virtual Network - Hub
@@ -38,6 +215,9 @@ resource hubnetwork 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
         name: 'AzureBastionSubnet'
         properties: {
           addressPrefix: '10.10.1.1/27'
+          networkSecurityGroup: {
+            id: nsgBastion.id
+          }
         }
       }
       {
@@ -55,6 +235,10 @@ resource hubnetwork 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
         }
       }
     ]
+  }
+
+  resource bastionSubnet 'subnets' existing = {
+    name: 'AzureBastionSubnet'
   }
 }
 
@@ -169,5 +353,72 @@ resource peerToSpoke2 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@
     remoteVirtualNetwork: {
       id: spokenetwork2.id
     }
+  }
+}
+
+// Diagnostic Settings - Hub VNET
+resource diagSetHub 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'diagnostics-Hub'
+  scope: hubnetwork
+  properties: {
+    logs: [
+      {
+        categoryGroup: 'allLogs'
+        enabled: true
+        retentionPolicy: {
+          days: 1
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'allMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: 1
+          enabled: true
+        }
+      }
+    ]
+    workspaceId: logCentralLogging.id
+  }
+}
+
+// Public IP - For Bastion Service
+resource pipBastion 'Microsoft.Network/publicIPAddresses@2022-07-01' = {
+  name: 'pip-BastionService'
+  location: location
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+    publicIPAddressVersion: 'IPv4'
+  }
+}
+
+// Bastion
+resource bastion 'Microsoft.Network/bastionHosts@2022-07-01' = {
+  name: 'bastion-hubnetwork'
+  location: location
+  sku: {
+    name: 'Basic'
+  }
+  properties: {
+    ipConfigurations: [
+      {
+        name: 'bastionConfigs'
+        properties: {
+          privateIPAllocationMethod: 'Dynamic'
+          publicIPAddress: {
+            id: pipBastion.id
+          }
+          subnet: {
+            id: hubnetwork::bastionSubnet.id
+          }
+        }
+      }
+    ]
   }
 }
