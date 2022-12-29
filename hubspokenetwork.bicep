@@ -8,6 +8,7 @@ param location string = 'westus2'
 // Azure Monitor
 // Public IP (Bastion)     - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/publicipaddresses?pivots=deployment-language-bicep
 // Bastion Service         - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/bastionhosts?pivots=deployment-language-bicep
+// Bastion Service NSG Info- https://learn.microsoft.com/en-us/azure/bastion/bastion-nsg
 // Firewall
 // VPN Gateway
 
