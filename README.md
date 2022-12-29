@@ -1,6 +1,7 @@
 # 002-HubSpokeTopology
 
-This repo pairs with my YouTube video:
+This repo pairs with my YouTube videos:
+- Part 1 VNETs, Subnets and Peerings - https://youtu.be/n76A7vg5PsI
 
 The goal of the video was to recreate the following Hub-Spoke Network design from Microsoft.  While I realize Microsoft provides all the code at the bottom of the link, I only used it when I was stuck during the prep work.  I'm using the video and github repo to help document my own learning.  I hope this can be useful to someone else as well.
 
