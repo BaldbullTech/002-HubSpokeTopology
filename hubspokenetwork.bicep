@@ -12,26 +12,26 @@ param location string = 'westus2'
 // VPN Gateway
 
 
-// Network Security Group
-resource nsgSpokes 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
-  name: 'nsg-spokes-default'
+resource logCentralLogging 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+  name: 'law-CentralLogging'
   location: location
-  properties: {
-    
-  }
 }
-// Network Security Group - Bastion
-// Reference: https://learn.microsoft.com/en-us/azure/bastion/bastion-nsg
+
+resource nsgSpoke 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
+  name: 'nsg-spoke-default'
+  location: location
+  properties: {}
+}
+
 resource nsgBastion 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
   name: 'nsg-bastion'
   location: location
   properties: {
     securityRules: [
-      // build Inbound rules first per reference link above
       {
         name: 'AllowHttpsInbound'
         properties: {
-          description: 'Allows users in via HTTPS 443'
+          description: 'Allows users in via HTTPS / 443'
           protocol: 'Tcp'
           sourcePortRange: '*'
           destinationPortRange: '443'
@@ -193,15 +193,7 @@ resource nsgBastion 'Microsoft.Network/networkSecurityGroups@2022-07-01' = {
   }
 }
 
-// Log Analytics Workspace
-resource logCentralLogging 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
-  name: 'law-CentralLogging'
-  location: location
-
-}
-
-// Virtual Network - Hub
-resource hubnetwork 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
+resource hubnetwork 'Microsoft.Network/virtualNetworks@2022-07-01' = {
   name: 'vnet-hub'
   location: location
   properties: {
@@ -214,22 +206,20 @@ resource hubnetwork 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
       {
         name: 'AzureBastionSubnet'
         properties: {
-          addressPrefix: '10.10.1.1/27'
+          addressPrefix: '10.10.1.0/27'
           networkSecurityGroup: {
             id: nsgBastion.id
           }
         }
       }
       {
-        id: 'subnet-vpngateway'
         name: 'subnet-vpngateway'
         properties: {
           addressPrefix: '10.10.1.32/27'
         }
       }
       {
-        id: 'subnet-firewall'
-        name: 'subnet-firewall'
+        name: 'AzureFirewallSubnet'
         properties: {
           addressPrefix: '10.10.1.64/26'
         }
@@ -238,17 +228,13 @@ resource hubnetwork 'Microsoft.Network/virtualnetworks@2015-05-01-preview' = {
   }
 
   resource bastionSubnet 'subnets' existing = {
-    name: 'AzureBastionSubnet'
+    name: 'AzurebastionSubnet'
   }
 }
 
-// Virtual Network - Spoke 1
 resource spokenetwork1 'Microsoft.Network/virtualNetworks@2022-07-01' = {
   name: 'vnet-spoke1'
   location: location
-  dependsOn: [
-    hubnetwork
-  ]
   properties: {
     addressSpace: {
       addressPrefixes: [
@@ -257,12 +243,11 @@ resource spokenetwork1 'Microsoft.Network/virtualNetworks@2022-07-01' = {
     }
     subnets: [
       {
-        id: 'subnet-spoke1-default'
         name: 'subnet-spoke1-default'
         properties: {
           addressPrefix: '10.10.2.0/27'
           networkSecurityGroup: {
-            id: nsgSpokes.id
+            id: nsgSpoke.id
           }
         }
       }
@@ -270,7 +255,6 @@ resource spokenetwork1 'Microsoft.Network/virtualNetworks@2022-07-01' = {
   }
 }
 
-// Virtual Network - Spoke 2
 resource spokenetwork2 'Microsoft.Network/virtualNetworks@2022-07-01' = {
   name: 'vnet-spoke2'
   location: location
@@ -282,58 +266,22 @@ resource spokenetwork2 'Microsoft.Network/virtualNetworks@2022-07-01' = {
     }
     subnets: [
       {
-        id: 'subnet-spoke2-default'
         name: 'subnet-spoke2-default'
         properties: {
           addressPrefix: '10.10.3.0/27'
           networkSecurityGroup: {
-            id: nsgSpokes.id
+            id: nsgSpoke.id
           }
         }
       }
     ]
-    
   }
 }
 
-// peer spoke 1 --> hub
-resource peerFromSpoke1 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2022-07-01' = {
-  name: 'peer-spoke1-to-hub'
-  parent: spokenetwork1
-  dependsOn: [
-    hubnetwork, spokenetwork1
-  ]
-  properties:{
-    peeringState: 'Connected'
-    remoteVirtualNetwork: {
-      id: hubnetwork.id
-    }
-  }
-}
-
-// peer spoke 2 --> hub
-resource peerFromSpoke2 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2022-07-01' = {
-  name: 'peer-spoke2-to-hub'
-  parent: spokenetwork2
-  dependsOn: [
-    hubnetwork, spokenetwork2
-  ]
-  properties:{
-    peeringState: 'Connected'
-    remoteVirtualNetwork: {
-      id: hubnetwork.id
-    }
-  }
-}
-
-// peer hub --> spoke 1
 resource peerToSpoke1 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2022-07-01' = {
   name: 'peer-hub-to-spoke1'
   parent: hubnetwork
-  dependsOn: [
-    hubnetwork, spokenetwork1
-  ]
-  properties:{
+  properties: {
     peeringState: 'Connected'
     remoteVirtualNetwork: {
       id: spokenetwork1.id
@@ -341,14 +289,21 @@ resource peerToSpoke1 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@
   }
 }
 
-// peer hub --> spoke 2
+resource peerFromSpoke1 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2022-07-01' = {
+  name: 'peer-spoke1-to-hub'
+  parent: spokenetwork1
+  properties: {
+    peeringState: 'Connected'
+    remoteVirtualNetwork: {
+      id: hubnetwork.id
+    }
+  }
+}
+
 resource peerToSpoke2 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2022-07-01' = {
   name: 'peer-hub-to-spoke2'
   parent: hubnetwork
-  dependsOn: [
-    hubnetwork, spokenetwork2
-  ]
-  properties:{
+  properties: {
     peeringState: 'Connected'
     remoteVirtualNetwork: {
       id: spokenetwork2.id
@@ -356,8 +311,18 @@ resource peerToSpoke2 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@
   }
 }
 
-// Diagnostic Settings - Hub VNET
-resource diagSetHub 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+resource peerFromSpoke2 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2022-07-01' = {
+  name: 'peer-spoke2-to-hub'
+  parent: spokenetwork2
+  properties: {
+    peeringState: 'Connected'
+    remoteVirtualNetwork: {
+      id: hubnetwork.id
+    }
+  }
+}
+
+resource diagSettingHub 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'diagnostics-Hub'
   scope: hubnetwork
   properties: {
@@ -366,17 +331,17 @@ resource diagSetHub 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' =
         categoryGroup: 'allLogs'
         enabled: true
         retentionPolicy: {
-          days: 1
+          days: 7
           enabled: true
         }
       }
     ]
-    metrics: [
+    metrics:[
       {
         category: 'allMetrics'
         enabled: true
         retentionPolicy: {
-          days: 1
+          days: 7
           enabled: true
         }
       }
@@ -385,9 +350,8 @@ resource diagSetHub 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' =
   }
 }
 
-// Public IP - For Bastion Service
 resource pipBastion 'Microsoft.Network/publicIPAddresses@2022-07-01' = {
-  name: 'pip-BastionService'
+  name: 'pip-VastionService'
   location: location
   sku: {
     name: 'Standard'
@@ -398,8 +362,7 @@ resource pipBastion 'Microsoft.Network/publicIPAddresses@2022-07-01' = {
   }
 }
 
-// Bastion
-resource bastion 'Microsoft.Network/bastionHosts@2022-07-01' = {
+resource bastionInstance 'Microsoft.Network/bastionHosts@2022-07-01' ={
   name: 'bastion-hubnetwork'
   location: location
   sku: {
