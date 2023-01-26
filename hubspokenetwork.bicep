@@ -5,12 +5,11 @@ param location string = 'westus2'
 // Network Security Groups - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/networksecuritygroups?pivots=deployment-language-bicep
 // Log Analytics Workspace - https://learn.microsoft.com/en-us/azure/templates/microsoft.operationalinsights/workspaces?pivots=deployment-language-bicep
 // Diagnostic Settings     - https://learn.microsoft.com/en-us/azure/templates/microsoft.insights/diagnosticsettings?pivots=deployment-language-bicep
-// Azure Monitor
 // Public IP (Bastion)     - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/publicipaddresses?pivots=deployment-language-bicep
 // Bastion Service         - https://learn.microsoft.com/en-us/azure/templates/microsoft.network/bastionhosts?pivots=deployment-language-bicep
 // Bastion Service NSG Info- https://learn.microsoft.com/en-us/azure/bastion/bastion-nsg
 // Firewall
-// VPN Gateway
+
 
 
 resource logCentralLogging 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
@@ -231,6 +230,10 @@ resource hubnetwork 'Microsoft.Network/virtualNetworks@2022-07-01' = {
   resource bastionSubnet 'subnets' existing = {
     name: 'AzurebastionSubnet'
   }
+  
+  resource firewallSubnet 'subnets' existing = {
+    name: 'AzureFirewallSubnet'
+  }
 }
 
 resource spokenetwork1 'Microsoft.Network/virtualNetworks@2022-07-01' = {
@@ -382,6 +385,133 @@ resource bastionInstance 'Microsoft.Network/bastionHosts@2022-07-01' ={
             id: hubnetwork::bastionSubnet.id
           }
         }
+      }
+    ]
+  }
+}
+
+resource pipFirewall 'Microsoft.Network/publicIPAddresses@2022-07-01' = {
+  name: 'pip-Firewall'
+  location: location
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+    publicIPAddressVersion: 'IPv4'
+  }
+}
+
+resource firewallPolicy 'Microsoft.Network/firewallPolicies@2022-07-01' = {
+  name: 'policy-firewall'
+  location: location
+  properties: {
+    sku:{
+      tier: 'Standard'
+    }
+    threatIntelMode: 'Deny'
+    threatIntelWhitelist: {
+      fqdns: []
+      ipAddresses: []
+    }
+    insights: {
+      isEnabled: true
+      retentionDays: 30
+      logAnalyticsResources: {
+        defaultWorkspaceId: {
+          id: logCentralLogging.id
+        }
+      }
+    }
+    intrusionDetection: null
+    dnsSettings: {
+      servers: []
+      enableProxy: true
+    }
+  }
+
+  resource defaultNetworkRuleCollectionGroup 'ruleCollectionGroups@2022-07-01' = {
+    name: 'DefaultNetworkRuleCollectionGroup'
+    properties: {
+      priority: 200
+      ruleCollections: [
+        {
+          ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
+          name: 'org-wide-allow'
+          priority: 100
+          action: {
+            type: 'Allow'
+          }
+          rules:[
+            {
+              ruleType: 'NetworkRule'
+              name: 'DNS'
+              description: 'Allow DNS outbound'
+              ipProtocols: [
+                'UDP'
+              ]
+              sourceAddresses: [
+                '*'
+              ]
+              sourceIpGroups: []
+              destinationAddresses: [
+                '*'
+              ]
+              destinationIpGroups: []
+              destinationFqdns: []
+              destinationPorts: [
+                '53'
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+
+resource firewall 'Microsoft.Network/azureFirewalls@2022-07-01' = {
+  name: 'fw-hub'
+  location: location
+  properties: {
+    sku: {
+      name: 'AZFW_VNet'
+      tier: 'Standard'
+    }
+    firewallPolicy: {
+      id: firewallPolicy.id
+    }
+    ipConfigurations: [
+      {
+        name: pipFirewall.name
+        properties: {
+          subnet:{
+            id: hubnetwork::firewallSubnet.id
+          }
+          publicIPAddress: {
+            id: pipFirewall.id
+          }
+        }
+      }
+    ]
+  }
+}
+
+resource firewallDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'diagnostics-firewall'
+  scope: firewall
+  properties: {
+    workspaceId: logCentralLogging.id
+    logs: [
+      {
+        categoryGroup: 'allLogs'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
       }
     ]
   }
